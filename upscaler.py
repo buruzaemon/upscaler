@@ -26,7 +26,6 @@ from torchvision.transforms import functional as TF
 logger = logging.getLogger(__name__)
 
 
-
 UPSCALER_CONFIG_PATH = 'https://models.rivershavewings.workers.dev/config_laion_text_cond_latent_upscaler_2.json'
 UPSCALER_MODEL_PATH = 'https://models.rivershavewings.workers.dev/laion_text_cond_latent_upscaler_2_1_00470000_slim.pth'
 SD_MODEL_NAME = 'runwayml/stable-diffusion-v1-5'
@@ -151,8 +150,7 @@ class CLIPEmbedder(nn.Module):
 
 
 def main(args):
-    logger.debug(args)
-
+ 
     # Model configuration values
     #SD_C = 4 # Latent dimension
     #SD_F = 8 # Latent patch size (pixels per latent)
@@ -272,7 +270,7 @@ def main(args):
 
 
 def parse_args(input_args=None):
-    parser = argparse.ArgumentParser(description='main.py: Stable Diffusion upscaler')
+    parser = argparse.ArgumentParser(description='upscaler.py: Stable Diffusion upscaler')
     parser.add_argument(
         '--prompt', '-p',
         type=str,
@@ -316,6 +314,10 @@ def parse_args(input_args=None):
 
 
 if __name__ == "__main__":
+    logging.basicConfig(
+        level=logging.DEBUG, 
+        format='%(asctime)s - %(levelname)s - %(message)s'
+    )
     args = parse_args()
     main(args)
 
