@@ -9,4 +9,6 @@ This script uses Stable Diffusion v1-5 internally (see [`runwayml/stable-diffusi
 
 ### Usage
 #### Script arguments
-* `--prompt` | `-p`: text prompt for guiding the image generation
+* `--prompt` | `-p`: text prompt for guiding the image generation, required
+* `--output-file` | `-o`: path for ouputting the generated image file, required. NOTE that this script only supports image formats of JPEG and PNG.
+* `--seed` | `-s`: seed value for global random state, optional; defaults to `0`, which will use the current time as the seed
