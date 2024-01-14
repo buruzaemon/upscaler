@@ -238,11 +238,11 @@ def main(args):
             if not seed:
                 logger.info('No seed was provided, using the current time.')
                 seed = timestamp
-            logger.info(f'Generating with seed={seed}')
+            logger.info(f'Generating image with seed={seed}')
             seed_everything(seed)
 
             # create initial image with stable diffusion
-            input_image = sd_pipeline(prompt, num_inference_steps=25).images[0]
+            input_image = sd_pipeline(prompt, num_inference_steps=steps).images[0]
             image = input_image
             image = TF.to_tensor(image).to(device) * 2 - 1
 
@@ -290,7 +290,7 @@ def main(args):
             return TF.to_pil_image(pixels)
 
         logger.info('Starting process...')
-        logger.info(f'Prompt:\n  {args.prompt}')
+        logger.info(f'Prompt: {args.prompt}')
         logger.info(f'Seed: {args.seed}')
         logger.info(f'Output file format: {args.format}')
 
@@ -344,7 +344,7 @@ def parse_args(input_args=None):
             image_format = 'JPEG'
         setattr(args, 'format', image_format)
     else:
-        raise ValueError('Only JPEG and PNG formats are supported!')
+        parser.error('Only JPEG and PNG formats are supported!')
 
     return args
 
@@ -352,7 +352,7 @@ def parse_args(input_args=None):
 if __name__ == "__main__":
     logging.basicConfig(
         level=logging.INFO,
-        format='%(asctime)s - %(levelname)s - %(filename)s - %(message)s'
+        format='%(asctime)s - %(levelname)s - %(pathname)s - %(message)s'
     )
     args = parse_args()
     stime = time.time()
