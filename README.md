@@ -24,6 +24,10 @@ Run this script like so:
 
 ## Example
 
+Here is an example of a 1024 x 1024 upscaled image generated with Stable Diffusion v1-5 along with the Upscaler in the ["Stable Diffusion Upscaler Demo"](https://colab.research.google.com/drive/1o1qYJcFeywzCIdkfKJy7cTpgZTCM2EI4) Colab notebook. 
+
+The prompt comes directly from the [Stable Diffusion prompt: a definitive guide](https://stable-diffusion-art.com/prompt-guide/).
+
     python upscaler.py --prompt "dog, autumn in paris, ornate, beautiful, atmosphere, vibe, mist, smoke, fire, chimney, rain, wet, pristine, puddles, melting, dripping, snow, creek, lush, ice, bridge, forest, roses, flowers, by stanley artgerm lau, greg rutkowski, thomas kindkade, alphonse mucha, loish, norman rockwell" --seed 8675309 --output-file "example.png"
 
 ![alt example generated image](https://github.com/buruzaemon/upscaler/blob/main/images/example.png)
