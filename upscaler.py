@@ -1,6 +1,9 @@
 # -*- coding: utf-8 -*-
 """
-This is a temporary script file.
+upscaler.py
+
+Condensed script version of the Stable Diffusion Upscaler Demo Colab notebook
+(https://colab.research.google.com/drive/1o1qYJcFeywzCIdkfKJy7cTpgZTCM2EI4)
 """
 import argparse
 import hashlib
@@ -9,6 +12,7 @@ import numpy as np
 import os
 import re
 import requests
+import sys
 import time
 
 from pathlib import Path
@@ -26,11 +30,27 @@ from torchvision.transforms import functional as TF
 logger = logging.getLogger(__name__)
 
 
+# URLs for configuration and model of the Upscaler in the Colab notebook
 UPSCALER_CONFIG_PATH = 'https://models.rivershavewings.workers.dev/config_laion_text_cond_latent_upscaler_2.json'
 UPSCALER_MODEL_PATH = 'https://models.rivershavewings.workers.dev/laion_text_cond_latent_upscaler_2_1_00470000_slim.pth'
+
+# Model name on HF for the CLIP tokenizer and embedder used in the Upscaler
+# per the Colab notebook
+CLIP_MODEL_NAME = 'openai/clip-vit-large-patch14'
+
+# Model name on HF for Stable Diffusion v1.5
+# Used in both the variational autoencoder in the Upscaler,
+# as well as the HF pipeline for generating the initial image
 SD_MODEL_NAME = 'runwayml/stable-diffusion-v1-5'
 
 
+RETURN_OK = 0
+RETURN_NG = 1
+
+
+##
+# from 2c. Fetch models
+#
 def fetch(url_or_path):
     if url_or_path.startswith('http:') or url_or_path.startswith('https:'):
         _, ext = os.path.splitext(os.path.basename(url_or_path))
@@ -46,6 +66,7 @@ def fetch(url_or_path):
             os.rename(f'tmp/{cachename}', f'cache/{cachename}')
         return f'cache/{cachename}'
     return url_or_path
+
 
 class NoiseLevelAndTextConditionedUpscaler(nn.Module):
     def __init__(self, inner_model, sigma_data=1., embed_dim=256):
@@ -89,6 +110,9 @@ def make_upscaler_model(config_path, model_path, pooler_dim=768, train=False, de
     return model.to(device)
 
 
+##
+# from Set up some functions and load the text encoder
+#
 class CFGUpscaler(nn.Module):
     def __init__(self, model, uc, cond_scale):
         super().__init__()
@@ -150,7 +174,7 @@ class CLIPEmbedder(nn.Module):
 
 
 def main(args):
- 
+
     # Model configuration values
     #SD_C = 4 # Latent dimension
     #SD_F = 8 # Latent patch size (pixels per latent)
@@ -167,107 +191,120 @@ def main(args):
     tol_scale = 0.25 #@param {type: 'number'}
     eta = 1.0 #@param {type: 'number'}
 
-
-    # 2c. Fetch models
-    model_up = make_upscaler_model(
-        fetch(UPSCALER_CONFIG_PATH),
-        fetch(UPSCALER_MODEL_PATH)
-    )
-    logger.info("created upscaler models")
-
-    sd_vae = AutoencoderKL.from_pretrained(
-        SD_MODEL_NAME,
-        subfolder='vae'
-    )
-    logger.info("created Stable Diffusion vae model for upscaler")
-
-    sd_pipeline = AutoPipelineForText2Image.from_pretrained(
-        SD_MODEL_NAME,
-        torch_dtype=torch.float16,
-        use_safetensors=True
-    )
-    logger.info("created Stable Diffusion model for creating initial image from prompt")
-
-    # Load models on GPU
     device = torch.device('cuda')
 
-    model_up = model_up.to(device)
-    sd_vae = sd_vae.to(device)
-    sd_pipeline = sd_pipeline.to(device)
+    try:
+        # 2c. Fetch models
+        logger.info('Creating models for Upscaler (including VAE part)')
+        model_up = make_upscaler_model(
+            fetch(UPSCALER_CONFIG_PATH),
+            fetch(UPSCALER_MODEL_PATH)
+        )
 
-    logger.info("models moved to GPU")
+        # Stable Diffusion vae used in upscaling process
+        sd_vae = AutoencoderKL.from_pretrained(
+            SD_MODEL_NAME,
+            subfolder='vae'
+        )
 
-    # Set up some functions and load the text encoder
-    tok_up = CLIPTokenizerTransform()
-    text_encoder_up = CLIPEmbedder(device=device)
-    logger.info("tokenizers set up")
+        # CLIP tokenizer transform & embedder used in
+        tok_up = CLIPTokenizerTransform()
+        text_encoder_up = CLIPEmbedder(device=device)
+        logger.info("tokenizers set up")
 
-    # 3c. Run the model
+        # Stable Diffusion HF pipeline for generating the initial image
+        logger.info('Creating Stable Diffusion HF pipeline for initial image generation')
+        sd_pipeline = AutoPipelineForText2Image.from_pretrained(
+            SD_MODEL_NAME,
+            torch_dtype=torch.float16,
+            use_safetensors=True
+        )
 
-    @torch.no_grad()
-    def condition_up(prompts):
-        return text_encoder_up(tok_up(prompts))
+        # Load models on GPU
+        logger.info(f'Moving models to {device} device')
+        model_up = model_up.to(device)
+        sd_vae = sd_vae.to(device)
+        sd_pipeline = sd_pipeline.to(device)
 
-    @torch.no_grad()
-    def upscale_image(prompt, seed=0):
-        timestamp = int(time.time())
-        if not seed:
-            logger.info('No seed was provided, using the current time.')
-            seed = timestamp
-        logger.info(f'Generating with seed={seed}')
-        seed_everything(seed)
 
-        # create initial image with stable diffusion
-        input_image = sd_pipeline(prompt, num_inference_steps=25).images[0]
-        image = input_image
-        image = TF.to_tensor(image).to(device) * 2 - 1
+        # 3c. Run the model
+        @torch.no_grad()
+        def condition_up(prompts):
+            return text_encoder_up(tok_up(prompts))
 
-        uc = condition_up([""])
-        c = condition_up([prompt])
+        @torch.no_grad()
+        def upscale_image(prompt, seed=0):
+            timestamp = int(time.time())
+            if not seed:
+                logger.info('No seed was provided, using the current time.')
+                seed = timestamp
+            logger.info(f'Generating with seed={seed}')
+            seed_everything(seed)
 
-        # >>>
-        low_res_latent = sd_vae.encode(image.unsqueeze(0)).latent_dist.sample() * SD_Q
+            # create initial image with stable diffusion
+            input_image = sd_pipeline(prompt, num_inference_steps=25).images[0]
+            image = input_image
+            image = TF.to_tensor(image).to(device) * 2 - 1
 
-        [_, C, H, W] = low_res_latent.shape
+            uc = condition_up([""])
+            c = condition_up([prompt])
 
-        # Noise levels from stable diffusion.
-        sigma_min, sigma_max = 0.029167532920837402, 14.614642143249512
+            # >>>
+            low_res_latent = sd_vae.encode(image.unsqueeze(0)).latent_dist.sample() * SD_Q
 
-        model_wrap = CFGUpscaler(model_up, uc, cond_scale=guidance_scale)
-        low_res_sigma = torch.full([1], noise_aug_level, device=device)
-        x_shape = [batch_size, C, 2*H, 2*W]
+            [_, C, H, W] = low_res_latent.shape
 
-        def do_sample(noise, extra_args):
-            # We take log-linear steps in noise-level from sigma_max to sigma_min, using one of the k diffusion samplers.
-            sigmas = torch.linspace(np.log(sigma_max), np.log(sigma_min), steps+1).exp().to(device)
-            if sampler == 'k_euler':
-                return K.sampling.sample_euler(model_wrap, noise * sigma_max, sigmas, extra_args=extra_args)
-            elif sampler == 'k_euler_ancestral':
-                return K.sampling.sample_euler_ancestral(model_wrap, noise * sigma_max, sigmas, extra_args=extra_args, eta=eta)
-            elif sampler == 'k_dpm_2_ancestral':
-                return K.sampling.sample_dpm_2_ancestral(model_wrap, noise * sigma_max, sigmas, extra_args=extra_args, eta=eta)
-            elif sampler == 'k_dpm_fast':
-                return K.sampling.sample_dpm_fast(model_wrap, noise * sigma_max, sigma_min, sigma_max, steps, extra_args=extra_args, eta=eta)
-            elif sampler == 'k_dpm_adaptive':
-                sampler_opts = dict(s_noise=1., rtol=tol_scale * 0.05, atol=tol_scale / 127.5, pcoeff=0.2, icoeff=0.4, dcoeff=0)
-                return K.sampling.sample_dpm_adaptive(model_wrap, noise * sigma_max, sigma_min, sigma_max, extra_args=extra_args, eta=eta, **sampler_opts)
+            # Noise levels from stable diffusion.
+            sigma_min, sigma_max = 0.029167532920837402, 14.614642143249512
 
-        if noise_aug_type == 'gaussian':
-            latent_noised = low_res_latent + noise_aug_level * torch.randn_like(low_res_latent)
-        elif noise_aug_type == 'fake':
-            latent_noised = low_res_latent * (noise_aug_level ** 2 + 1)**0.5
-        extra_args = {'low_res': latent_noised, 'low_res_sigma': low_res_sigma, 'c': c}
-        noise = torch.randn(x_shape, device=device)
-        up_latents = do_sample(noise, extra_args)
+            model_wrap = CFGUpscaler(model_up, uc, cond_scale=guidance_scale)
+            low_res_sigma = torch.full([1], noise_aug_level, device=device)
+            x_shape = [batch_size, C, 2*H, 2*W]
 
-        pixels = sd_vae.decode(up_latents/SD_Q)
-        pixels = pixels.sample.add(1).div(2).clamp(0,1).squeeze()
+            def do_sample(noise, extra_args):
+                # We take log-linear steps in noise-level from sigma_max to sigma_min, using one of the k diffusion samplers.
+                sigmas = torch.linspace(np.log(sigma_max), np.log(sigma_min), steps+1).exp().to(device)
+                if sampler == 'k_euler':
+                    return K.sampling.sample_euler(model_wrap, noise * sigma_max, sigmas, extra_args=extra_args)
+                elif sampler == 'k_euler_ancestral':
+                    return K.sampling.sample_euler_ancestral(model_wrap, noise * sigma_max, sigmas, extra_args=extra_args, eta=eta)
+                elif sampler == 'k_dpm_2_ancestral':
+                    return K.sampling.sample_dpm_2_ancestral(model_wrap, noise * sigma_max, sigmas, extra_args=extra_args, eta=eta)
+                elif sampler == 'k_dpm_fast':
+                    return K.sampling.sample_dpm_fast(model_wrap, noise * sigma_max, sigma_min, sigma_max, steps, extra_args=extra_args, eta=eta)
+                elif sampler == 'k_dpm_adaptive':
+                    sampler_opts = dict(s_noise=1., rtol=tol_scale * 0.05, atol=tol_scale / 127.5, pcoeff=0.2, icoeff=0.4, dcoeff=0)
+                    return K.sampling.sample_dpm_adaptive(model_wrap, noise * sigma_max, sigma_min, sigma_max, extra_args=extra_args, eta=eta, **sampler_opts)
 
-        return TF.to_pil_image(pixels)
+            if noise_aug_type == 'gaussian':
+                latent_noised = low_res_latent + noise_aug_level * torch.randn_like(low_res_latent)
+            elif noise_aug_type == 'fake':
+                latent_noised = low_res_latent * (noise_aug_level ** 2 + 1)**0.5
+            extra_args = {'low_res': latent_noised, 'low_res_sigma': low_res_sigma, 'c': c}
+            noise = torch.randn(x_shape, device=device)
+            up_latents = do_sample(noise, extra_args)
 
-    output_image = upscale_image(args.prompt, args.seed)
-    output_image.save(args.output_file, format=args.format)
+            pixels = sd_vae.decode(up_latents/SD_Q)
+            pixels = pixels.sample.add(1).div(2).clamp(0,1).squeeze()
 
+            return TF.to_pil_image(pixels)
+
+        logger.info('Starting process...')
+        logger.info(f'Prompt:\n  {args.prompt}')
+        logger.info(f'Seed: {args.seed}')
+        logger.info(f'Output file format: {args.format}')
+
+        output_image = upscale_image(args.prompt, args.seed)
+        output_image.save(args.output_file, format=args.format)
+
+        logger.info(f'Created upscaled image file: {args.output_file}')
+
+        retval = RETURN_OK
+    except:
+        logger.exception('Unexpected error in script execution')
+        retval = RETURN_NG
+    finally:
+        return retval
 
 def parse_args(input_args=None):
     parser = argparse.ArgumentParser(description='upscaler.py: Stable Diffusion upscaler')
@@ -307,17 +344,20 @@ def parse_args(input_args=None):
             image_format = 'JPEG'
         setattr(args, 'format', image_format)
     else:
-        raise ValueError("Only JPEG and PNG formats are supported!")
+        raise ValueError('Only JPEG and PNG formats are supported!')
 
     return args
 
 
-
 if __name__ == "__main__":
     logging.basicConfig(
-        level=logging.DEBUG, 
-        format='%(asctime)s - %(levelname)s - %(message)s'
+        level=logging.INFO,
+        format='%(asctime)s - %(levelname)s - %(filename)s - %(message)s'
     )
     args = parse_args()
-    main(args)
+    stime = time.time()
+    retval = main(args)
+    etime = time.time()
+    logger.info(f'Script completed in {etime-stime:0.1f} s')
+    sys.exit(retval)
 
