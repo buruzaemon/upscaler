@@ -12,3 +12,9 @@ This script uses Stable Diffusion v1-5 internally (see [`runwayml/stable-diffusi
 * `--prompt` | `-p`: text prompt for guiding the image generation, required. NOTE that the prompt may be truncated as CLIP can only handle sequences up to 77 tokens.
 * `--output-file` | `-o`: path for ouputting the generated image file, required. NOTE that this script only supports image formats of JPEG and PNG.
 * `--seed` | `-s`: seed value for global random state, optional; defaults to `0`, which will use the current time as the seed
+
+
+### Execution
+Run this script like so:
+
+    python upscaler.py --prompt [prompt for image generation] --output-file [path to output image file, either JPEG or PNG] --seed [some integer seed value]
