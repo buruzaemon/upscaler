@@ -24,6 +24,6 @@ Run this script like so:
 
 ## Example
 
-blah
+    python upscaler.py --prompt "dog, autumn in paris, ornate, beautiful, atmosphere, vibe, mist, smoke, fire, chimney, rain, wet, pristine, puddles, melting, dripping, snow, creek, lush, ice, bridge, forest, roses, flowers, by stanley artgerm lau, greg rutkowski, thomas kindkade, alphonse mucha, loish, norman rockwell" --seed 8675309 --output-file "example.png"
 
 ![alt example generated image](https://github.com/buruzaemon/upscaler/blob/main/images/example.png)
