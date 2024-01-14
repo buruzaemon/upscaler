@@ -25,3 +25,5 @@ Run this script like so:
 ## Example
 
 blah
+
+![alt example generated image](https://github.com/buruzaemon/upscaler/blob/main/images/example.png)
